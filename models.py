@@ -4,9 +4,8 @@ Database model, using Flask-SQLAlchemy
 
 from backend.app import db
 from datetime import datetime
-from sqlalchemy import exists
+from sqlalchemy import exists, desc
 from sqlalchemy.inspection import inspect
-import sys
 import json
 
 
@@ -16,7 +15,12 @@ class Serializer(object):
     """
 
     def serialize(self):
-        return {c: getattr(self, c) for c in inspect(self).attrs.keys()}
+        # Skip a relationship backref
+        return {
+            c: getattr(self, c)
+            for c in inspect(self).attrs.keys()
+            if not isinstance(getattr(self, c), (Patient, Visit, Lab, Imaging, Appointment))
+        }
 
     @staticmethod
     def serialize_list(l):
@@ -77,22 +81,16 @@ class BaseModel(db.Model, Serializer):
 
         d = Serializer.serialize(self)
 
-        # Remove key from serialize data
         try:
+            # Remove key from serialize data
             for key in self.__remove__:
-                print('2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222', file=sys.stdout)
                 try:
                     del d[key]
 
                 except (KeyError, IndexError):
                     pass
-        
-        except AttributeError:
-            print('here', file=sys.stdout)
-            pass
 
-        # Convert JSON data to proper data structure
-        try:
+            # Convert JSON data to proper data structure
             for key in self.__json__:
                 if d[key]:
                     d[key] = json.loads(d[key])
@@ -110,7 +108,7 @@ class Patient(BaseModel):
 
     __tablename__ = "patient"
     __protected__ = ["id", "hn", "timestamp", "modify_timestamp"]
-    __remove__ = ["visit", "lab", "imaging", "appointment"]
+    __remove__ = ["visits", "labs", "imaging", "appointments"]
     __json__ = ["tel", "relative_tel", "plan"]
 
     hn = db.Column(db.String(), index=True, nullable=False, unique=True)
@@ -143,10 +141,10 @@ class Patient(BaseModel):
     plan = db.Column(db.String())
 
     # relationship
-    visits = db.relationship("Visit", backref="patient_id", lazy="dynamic")
-    labs = db.relationship("Lab", backref="patient_id", lazy="dynamic")
-    imagings = db.relationship("Imaging", backref="patient_id", lazy="dynamic")
-    appointments = db.relationship("Appointment", backref="patient_id", lazy="dynamic")
+    visits = db.relationship("Visit", backref="patient_id", lazy="dynamic", order_by="desc(Visit.date)", cascade="all, delete, delete-orphan")
+    labs = db.relationship("Lab", backref="patient_id", lazy="dynamic", order_by="desc(Lab.date)", cascade="all, delete, delete-orphan")
+    imaging = db.relationship("Imaging", backref="patient_id", lazy="dynamic", order_by="desc(Imaging.date)", cascade="all, delete, delete-orphan")
+    appointments = db.relationship("Appointment", backref="patient_id", lazy="dynamic", order_by="desc(Appointment.date)", cascade="all, delete, delete-orphan")
 
 
 class Visit(BaseModel):
@@ -155,16 +153,8 @@ class Visit(BaseModel):
     """
 
     __tablename__ = "visit"
-    __protected__ = [
-        "id",
-        "date",
-        "paitent_id",
-        "paitent",
-        "timestamp",
-        "modify_timestamp",
-    ]
+    __protected__ = ["id", "date", "paitent_id", "timestamp", "modify_timestamp"]
     __json__ = ["imp", "arv", "oi_prophylaxis", "anti_tb", "vaccination"]
-    __remove__ = ["paitent"]
 
     date = db.Column(db.Date, nullable=False)
 
@@ -185,7 +175,6 @@ class Visit(BaseModel):
     vaccination = db.Column(db.String())
 
     paitent_id = db.Column(db.Integer, db.ForeignKey("patient.id"))
-    paitent = db.relationship("Patient")
 
 
 class Lab(BaseModel):

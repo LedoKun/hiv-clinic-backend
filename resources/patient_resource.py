@@ -32,7 +32,7 @@ class PatientResource(Resource):
 
         else:
             logger.info("Return information for HN {}.".format(hn))
-            return jsonify({"patient_data": patient.serialize()})
+            return jsonify({"patient_data": patient})
 
     def post(self):
         """
@@ -106,39 +106,41 @@ class PatientResource(Resource):
             logger.error(e)
             abort(500)
 
-    # Do soft delete/delete children
+    # Do soft delete/delete children?
+    def delete(self, hn=None):
+        """
+        Delete patient record
+        """
 
-    # def delete(self, hn=None):
-    #     """
-    #     Delete patient record
-    #     """
+        logger.debug("Recieved Delete request.")
 
-    #     logger.debug("Recieved Delete request.")
+        if not hn:
+            logger.error("No HN was passed along, unable to Delete the record.")
+            abort(400)
 
-    #     if not hn:
-    #         logger.error("No HN was passed along, unable to Delete the record.")
-    #         abort(400)
+        else:
+            hn = hn.replace("^", "/")
 
-    #     else:
-    #         hn = hn.replace("^", "/")
+        try:
+            # Check if the patient exists in the db
+            patient = Patient.query.filter_by(hn=hn)
+            # is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=hn)
 
-    #     # Check if the patient exists in the db
-    #     is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=hn)
+            if patient is None:
+                logger.error("No patient with the specified HN existed in the DB.")
+                abort(404)
 
-    #     if not is_patient_exists:
-    #         logger.error("No patient with the specified HN existed in the DB.")
-    #         abort(404)
+            patient.children.remove(visits, labs, imaging, appointments)
+            db.session.delete(patient)
+            # db.session.query(Patient).filter(Patient.hn == hn).delete()
+            db.session.commit()
 
-    #     try:
-    #         db.session.query(Patient).filter(Patient.hn == hn).delete()
-    #         db.session.commit()
+            return jsonify({"status": "success"})
 
-    #         return jsonify({"status": "success"})
-
-    #     except (IndexError, exc.SQLAlchemyError) as e:
-    #         logger.error("Unable to write to DB")
-    #         logger.error(e)
-    #         abort(500)
+        except (IndexError, exc.SQLAlchemyError) as e:
+            logger.error("Unable to write to DB")
+            logger.error(e)
+            abort(500)
 
     def form_data(self):
         """

@@ -4,6 +4,7 @@ Custom JSON Encoder
 
 from flask.json import JSONEncoder
 from datetime import date
+from backend.models import Patient, Visit, Lab, Imaging, Appointment
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -15,4 +16,8 @@ class CustomJSONEncoder(JSONEncoder):
         if isinstance(o, date):
             return o.isoformat()
 
-        return super().default(o)
+        elif isinstance(o, (Patient, Visit, Lab, Imaging, Appointment)):
+            return o.serialize()
+
+        else:
+            return super().default(o)

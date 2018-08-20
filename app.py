@@ -24,4 +24,5 @@ from backend import errors
 
 # Use CustomJSONEncoder
 from backend.common.json_encoder import CustomJSONEncoder
+
 app.json_encoder = CustomJSONEncoder

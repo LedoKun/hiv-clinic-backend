@@ -9,4 +9,8 @@ from backend.resources.visit_resource import VisitResource
 
 # REST reseources
 api.add_resource(PatientResource, "/api/patient", "/api/patient/<string:hn>")
-api.add_resource(VisitResource, "/api/patient/<string:hn>/visit", "/api/patient/<string:hn>/visit/<string:visit_date>")
+api.add_resource(
+    VisitResource,
+    "/api/patient/<string:hn>/visit",
+    "/api/patient/<string:hn>/visit/<string:visit_date>",
+)

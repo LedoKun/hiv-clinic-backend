@@ -3,7 +3,9 @@ from flask import jsonify, abort
 from backend.app import db, logger
 from backend.common.form_types import ISODateType
 from sqlalchemy import exc, exists
+from sqlalchemy.orm import load_only
 from backend.models import Patient, Visit
+import json
 
 
 class VisitResource(Resource):
@@ -37,7 +39,6 @@ class VisitResource(Resource):
             # Return all visits
             if hn and not visit_date:
                 logger.debug("Returning all visits by HN {}.".format(hn))
-
                 visits = patient.visits.all()
                 return jsonify(visits)
 
@@ -48,7 +49,7 @@ class VisitResource(Resource):
                 visit = patient.visits.filter_by(date=visit_date.isoformat()).first()
 
                 if visit:
-                    return jsonify(visit.serialize())
+                    return jsonify(visit)
 
                 else:
                     abort(404)
@@ -80,7 +81,9 @@ class VisitResource(Resource):
             data = self.form_data()
 
             # Check if the visit record exists in the db
-            is_visit_exists = patient.visits.filter_by(date=data["date"].isoformat()).scalar()
+            is_visit_exists = patient.visits.filter_by(
+                date=data["date"].isoformat()
+            ).scalar()
 
             if is_visit_exists:
                 logger.debug(
@@ -109,7 +112,62 @@ class VisitResource(Resource):
             abort(500)
 
     def patch(self, hn=None, visit_date=None):
-        pass
+        """
+        Patch visit record
+        """
+
+        logger.debug("Recieved PATCH request.")
+
+        if not hn or not visit_date:
+            logger.error(
+                "No HN or Visit Date was passed along, unable to patch the record."
+            )
+            abort(400)
+
+        else:
+            hn = hn.replace("^", "/")
+
+            try:
+                visit_date = ISODateType(visit_date)
+
+            except ValueError as e:
+                logger.error("Invalid date supplied.")
+                logger.error(e)
+                abort(400)
+
+        # Check if the patient exists in the db
+        try:
+            patient = Patient.query.filter_by(hn=hn).first()
+
+            if patient is None:
+                logger.error("No patient with the specified HN existed in the DB.")
+                abort(404)
+
+            # Check if the visit record exists in the db
+            visit = patient.visits.filter_by(date=visit_date.isoformat()).first()
+
+            if visit is None:
+                logger.debug("Visit on {} does not exist in the DB.".format(visit_date))
+                abort(400)
+
+            logger.debug(
+                "Patching a visit on {}, patient HN {}.".format(
+                    visit_date.isoformat(), hn
+                )
+            )
+            data = self.form_data()
+
+            visit.update(**data)
+
+            db.session.add(visit)
+            db.session.commit()
+
+            return jsonify({"status": "success"})
+
+        except (IndexError, exc.SQLAlchemyError) as e:
+            logger.error("Unable to write to DB")
+            logger.error(e)
+            abort(500)
 
     def delete(self, hn=None, visit_date=None):
         """
@@ -139,29 +197,17 @@ class VisitResource(Resource):
         try:
             patient = Patient.query.filter_by(hn=hn).first()
 
-        except (IndexError, exc.SQLAlchemyError) as e:
-            logger.error("Unable to write to DB")
-            logger.error(e)
-            abort(500)
+            if patient is None:
+                logger.error("No patient with the specified HN existed in the DB.")
+                abort(404)
 
-        if patient is None:
-            logger.error("No patient with the specified HN existed in the DB.")
-            abort(404)
+            # Check if the visit record exists in the db
+            visit = patient.visits.filter_by(date=visit_date.isoformat()).first()
 
-        # Check if the visit record exists in the db
-        try:
-            visit = patient.visits.query.filter_by(date=visit_date.isoformat()).first()
+            if visit is None:
+                logger.debug("Visit on {} does not exist in the DB.".format(visit_date))
+                abort(400)
 
-        except (IndexError, exc.SQLAlchemyError) as e:
-            logger.error("Unable to write to DB")
-            logger.error(e)
-            abort(500)
-
-        if visit is None:
-            logger.debug("Visit on {} does not exist in the DB.".format(visit_date))
-            abort(400)
-
-        try:
             db.session.delete(visit)
             db.session.commit()
 
