@@ -19,7 +19,9 @@ class Serializer(object):
         return {
             c: getattr(self, c)
             for c in inspect(self).attrs.keys()
-            if not isinstance(getattr(self, c), (Patient, Visit, Lab, Imaging, Appointment))
+            if not isinstance(
+                getattr(self, c), (Patient, Visit, Lab, Imaging, Appointment)
+            )
         }
 
     @staticmethod
@@ -83,7 +85,7 @@ class BaseModel(db.Model, Serializer):
 
         try:
             # Remove key from serialize data
-            for key in self.__remove__:
+            for key in self.__children__:
                 try:
                     del d[key]
 
@@ -100,6 +102,24 @@ class BaseModel(db.Model, Serializer):
 
         return d
 
+    @classmethod
+    def convert_to_json(self, data):
+        """
+        Convert list data to JSON format
+        """
+
+        try:
+            for key in self.__json__:
+                if data[key]:
+                    data[key] = json.dumps(data[key])
+
+            return data
+
+        except AttributeError:
+            pass
+
+        return data
+
 
 class Patient(BaseModel):
     """
@@ -108,8 +128,8 @@ class Patient(BaseModel):
 
     __tablename__ = "patient"
     __protected__ = ["id", "hn", "timestamp", "modify_timestamp"]
-    __remove__ = ["visits", "labs", "imaging", "appointments"]
     __json__ = ["tel", "relative_tel", "plan"]
+    __children__ = ["visits", "labs", "imaging", "appointments"]
 
     hn = db.Column(db.String(), index=True, nullable=False, unique=True)
 
@@ -141,10 +161,34 @@ class Patient(BaseModel):
     plan = db.Column(db.String())
 
     # relationship
-    visits = db.relationship("Visit", backref="patient_id", lazy="dynamic", order_by="desc(Visit.date)", cascade="all, delete, delete-orphan")
-    labs = db.relationship("Lab", backref="patient_id", lazy="dynamic", order_by="desc(Lab.date)", cascade="all, delete, delete-orphan")
-    imaging = db.relationship("Imaging", backref="patient_id", lazy="dynamic", order_by="desc(Imaging.date)", cascade="all, delete, delete-orphan")
-    appointments = db.relationship("Appointment", backref="patient_id", lazy="dynamic", order_by="desc(Appointment.date)", cascade="all, delete, delete-orphan")
+    visits = db.relationship(
+        "Visit",
+        backref="patient_id",
+        lazy="dynamic",
+        order_by="desc(Visit.date)",
+        cascade="all, delete, delete-orphan",
+    )
+    labs = db.relationship(
+        "Lab",
+        backref="patient_id",
+        lazy="dynamic",
+        order_by="desc(Lab.date)",
+        cascade="all, delete, delete-orphan",
+    )
+    imaging = db.relationship(
+        "Imaging",
+        backref="patient_id",
+        lazy="dynamic",
+        order_by="desc(Imaging.date)",
+        cascade="all, delete, delete-orphan",
+    )
+    appointments = db.relationship(
+        "Appointment",
+        backref="patient_id",
+        lazy="dynamic",
+        order_by="desc(Appointment.date)",
+        cascade="all, delete, delete-orphan",
+    )
 
 
 class Visit(BaseModel):
@@ -165,7 +209,7 @@ class Visit(BaseModel):
 
     hx_contact_tb = db.Column(db.String())
 
-    bw = db.Column(db.Float)
+    bw = db.Column(db.Float, nullable=False)
 
     imp = db.Column(db.String())
     arv = db.Column(db.String())
@@ -193,22 +237,22 @@ class Lab(BaseModel):
     ]
 
     date = db.Column(db.Date, nullable=False)
-    anti_hiv = db.Column(db.String())
+    anti_hiv = db.Column(db.String(3))
 
     cd4 = db.Column(db.Integer)
     p_cd4 = db.Column(db.Float)
     vl = db.Column(db.String())
     hiv_resistence = db.Column(db.String())
 
-    hbsag = db.Column(db.String())
-    anti_hbs = db.Column(db.String())
-    anti_hcv = db.Column(db.String())
+    hbsag = db.Column(db.String(3))
+    anti_hbs = db.Column(db.String(3))
+    anti_hcv = db.Column(db.String(3))
 
-    afb = db.Column(db.String())
-    sputum_cs = db.Column(db.String())
+    afb = db.Column(db.String(10))
+    sputum_cs = db.Column(db.String(3))
     genexpert = db.Column(db.String())
 
-    vdrl = db.Column(db.String())
+    vdrl = db.Column(db.String(3))
     rpr = db.Column(db.String())
 
     paitent_id = db.Column(db.Integer, db.ForeignKey("patient.id"))
@@ -231,10 +275,10 @@ class Imaging(BaseModel):
     ]
 
     date = db.Column(db.Date, nullable=False)
+    film_type = db.Column(db.String())
     result = db.Column(db.String())
 
     paitent_id = db.Column(db.Integer, db.ForeignKey("patient.id"))
-    paitent = db.relationship("Patient")
 
 
 class Appointment(BaseModel):
@@ -253,7 +297,6 @@ class Appointment(BaseModel):
     ]
 
     date = db.Column(db.Date, nullable=False)
-    appointment_for = db.Column(db.String())
+    appointment_for = db.Column(db.String(), nullable=False)
 
     paitent_id = db.Column(db.Integer, db.ForeignKey("patient.id"))
-    paitent = db.relationship("Patient")

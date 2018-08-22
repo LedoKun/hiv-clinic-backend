@@ -34,7 +34,7 @@ class PatientResource(Resource):
             logger.info("Return information for HN {}.".format(hn))
             return jsonify({"patient_data": patient})
 
-    def post(self):
+    def post(self, hn=None):
         """
         Create new patient
         """
@@ -130,7 +130,7 @@ class PatientResource(Resource):
                 logger.error("No patient with the specified HN existed in the DB.")
                 abort(404)
 
-            patient.children.remove(visits, labs, imaging, appointments)
+            # patient.children.remove(visits, labs, imaging, appointments)
             db.session.delete(patient)
             # db.session.query(Patient).filter(Patient.hn == hn).delete()
             db.session.commit()
@@ -276,9 +276,6 @@ class PatientResource(Resource):
 
         # Modify list datatype to JSON
         data = parser.parse_args()
-
-        for key in Patient.__json__:
-            if data[key]:
-                data[key] = json.dumps(data[key])
+        data = Patient.convert_to_json(data)
 
         return data
