@@ -1,11 +1,12 @@
-from flask_restful import Resource, reqparse
+from flask_restful import Resource
 from backend.models import Patient
-from flask import jsonify, abort
+from flask import jsonify, abort, request
 from backend.app import db, logger
-from sqlalchemy import func
-from backend.common.form_types import ISODateType
-from sqlalchemy import exc
+from sqlalchemy import func, exc
 import json
+from webargs import fields
+from marshmallow import validate, ValidationError
+from webargs.flaskparser import parser
 
 
 class PatientResource(Resource):
@@ -17,9 +18,9 @@ class PatientResource(Resource):
         if not hn:
             no_of_patients = db.session.query(func.count(Patient.id)).scalar()
             logger.debug(
-                "Return all total number of patient - {}".format(no_of_patients)
+                "Returning total number of patients: {}.".format(no_of_patients)
             )
-            return jsonify({"no_of_patients": no_of_patients})
+            return jsonify({"result": no_of_patients})
 
         else:
             hn = hn.replace("^", "/")
@@ -27,12 +28,12 @@ class PatientResource(Resource):
         patient = Patient.query.filter_by(hn=hn).first()
 
         if patient is None:
-            logger.error("HN {} does not exist in the database.".format(hn))
+            logger.error("HN {} not found.".format(hn))
             abort(404)
 
         else:
-            logger.info("Return information for HN {}.".format(hn))
-            return jsonify({"patient_data": patient})
+            logger.info("Found HN {}.".format(hn))
+            return jsonify(patient)
 
     def post(self, hn=None):
         """
@@ -42,25 +43,39 @@ class PatientResource(Resource):
         logger.debug("Recieved POST request.")
         data = self.form_data()
 
-        # Check if the patient exists in the db
+        # Check if the patient exists in db
         is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=data["hn"])
 
         if is_patient_exists:
-            logger.debug(
-                "HN {} is already existed in the DB. Returning 409".format(data["hn"])
-            )
+            logger.debug("HN {} existed in DB.".format(data["hn"]))
             abort(409)
 
-        logger.debug("Adding patient HN {} in the DB.".format(data["hn"]))
+        # Check for uniqueness
+        for col in Patient.__unique__:
+            try:
+                if not col in data:
+                    continue
+
+                column = getattr(Patient, col)
+                is_exists = Patient.is_exists(col=column, str_filter=data[col])
+
+                if is_exists:
+                    logger.warn("Submitted data failed the uniqueness test.")
+                    abort(409)
+
+            except (IndexError, KeyError, exc.SQLAlchemyError) as e:
+                logger.debug(e)
 
         try:
+            logger.debug("Saving HN {} in DB.".format(data["hn"]))
+
             patient = Patient(**data)
             db.session.add(patient)
             db.session.commit()
-            return jsonify({"status": "success"})
+            return jsonify({"result": "success"})
 
         except (IndexError, exc.SQLAlchemyError) as e:
-            logger.error("Unable to write to DB")
+            logger.error("Unable to commit to DB.")
             logger.error(e)
             abort(500)
 
@@ -72,7 +87,7 @@ class PatientResource(Resource):
         logger.debug("Recieved PATCH request.")
 
         if not hn:
-            logger.error("No HN was passed along, unable to PATCH the record.")
+            logger.error("No HN information.")
             abort(400)
 
         else:
@@ -81,32 +96,51 @@ class PatientResource(Resource):
         data = self.form_data()
 
         if data["hn"] != hn:
-            logger.error("HN from PATCH request and JSON data are not equal.")
-            abort(400)
+            logger.error("Recieved two different HNs.")
+            abort(409)
 
         # Check if the patient exists in the db
         is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=data["hn"])
 
         if not is_patient_exists:
-            logger.error("No patient with the specified HN existed in the DB.")
+            logger.error("HN {} not found in DB".format(data["hn"]))
             abort(404)
 
-        logger.debug("Patching patient HN {} in the DB.".format(data["hn"]))
+        # Check for uniqueness
+        for col in Patient.__unique__:
+            try:
+                column = getattr(Patient, col)
+                is_exists = (
+                    Patient.query.with_entities(Patient.hn)
+                    .filter(column == data[col])
+                    .filter(Patient.hn != data["hn"])
+                    .scalar()
+                )
+
+                if is_exists:
+                    logger.debug(
+                        "str_filter: {} existed in column: {}.".format(data[col]), col
+                    )
+                    abort(409)
+
+            except (IndexError, KeyError, exc.SQLAlchemyError):
+                pass
 
         try:
+            logger.debug("Patiching HN {} in DB.".format(data["hn"]))
+
             patient = Patient.query.filter_by(hn=data["hn"]).first()
             patient.update(**data)
             db.session.add(patient)
             db.session.commit()
 
-            return jsonify({"status": "success"})
+            return jsonify({"result": "success"})
 
-        except (IndexError, exc.SQLAlchemyError) as e:
-            logger.error("Unable to write to DB")
+        except (IndexError, exc.SQLAlchemyError, exc.IntegrityError) as e:
+            logger.error("Unable to commit to DB.")
             logger.error(e)
             abort(500)
 
-    # Do soft delete/delete children?
     def delete(self, hn=None):
         """
         Delete patient record
@@ -115,7 +149,7 @@ class PatientResource(Resource):
         logger.debug("Recieved Delete request.")
 
         if not hn:
-            logger.error("No HN was passed along, unable to Delete the record.")
+            logger.error("No HN information.")
             abort(400)
 
         else:
@@ -127,7 +161,7 @@ class PatientResource(Resource):
             # is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=hn)
 
             if patient is None:
-                logger.error("No patient with the specified HN existed in the DB.")
+                logger.error("HN {} not found in DB".format(data["hn"]))
                 abort(404)
 
             # patient.children.remove(visits, labs, imaging, appointments)
@@ -135,10 +169,10 @@ class PatientResource(Resource):
             # db.session.query(Patient).filter(Patient.hn == hn).delete()
             db.session.commit()
 
-            return jsonify({"status": "success"})
+            return jsonify({"result": "success"})
 
-        except (IndexError, exc.SQLAlchemyError) as e:
-            logger.error("Unable to write to DB")
+        except (IndexError, exc.SQLAlchemyError, exc.IntegrityError) as e:
+            logger.error("Unable to commit to DB.")
             logger.error(e)
             abort(500)
 
@@ -147,135 +181,86 @@ class PatientResource(Resource):
         Prase JSON from request
         """
 
+        # JSON Schema
+        json_args = {
+            "gov_id_type": fields.String(
+                validate=validate.OneOf(["บัตรประชาชน", "พาสปอร์ต"])
+            ),
+            "gov_id": fields.String(),
+            "name": fields.String(required=True),
+            "dob": fields.Date(),
+            "first_encounter": fields.Date(),
+            "sex": fields.String(
+                validate=validate.OneOf(["ชาย", "หญิง"]), required=True
+            ),
+            "gender": fields.String(
+                validate=validate.OneOf(
+                    ["Male", "Female", "MSM", "Bisexual", "Lesbian", "TG"]
+                ),
+                required=True,
+            ),
+            "marital": fields.String(
+                validate.OneOf(["โสด", "สมรส", "หย่าร้าง", "ม่าย"])
+            ),
+            "nationality": fields.String(required=True),
+            "education": fields.String(
+                validate=validate.OneOf(
+                    [
+                        "ต่ำกว่ามัธยมศึกษาตอนปลาย",
+                        "มัธยมศึกษาตอนปลาย",
+                        "ปวช/ปวส",
+                        "ปริญญาตรี",
+                        "ปริญญาโท",
+                        "ปริญญาเอก",
+                    ]
+                )
+            ),
+            "address": fields.String(),
+            "tel": fields.List(fields.String(allow_missing=True)),
+            "relative_tel": fields.List(fields.String(allow_missing=True)),
+            "is_refer": fields.String(
+                required=True,
+                validate=validate.OneOf(
+                    [
+                        "ผู้ป่วยใหม่",
+                        "ผู้ป่วยรับโอน (ยังไม่เริ่ม ARV)",
+                        "ผู้ป่วยรับโอน (เริ่ม ARV แล้ว)",
+                    ]
+                ),
+            ),
+            "refer_from": fields.String(),
+            "hn": fields.String(required=True),
+            "hiv_clinic_id": fields.String(),
+            "nap": fields.String(),
+            "bill_payer": fields.String(
+                required=True,
+                validate=validate.OneOf(
+                    [
+                        "ประกันสุขภาพทั่วหน้า",
+                        "ประกันสุขภาพทั่วหน้า นอกเขต",
+                        "ประกันสังคม",
+                        "ประกันสังคม ต่างรพ.",
+                        "ข้าราชการ/จ่ายตรง",
+                        "ต่างด้าว",
+                        "ชำระเงิน",
+                    ]
+                ),
+            ),
+            "plans": fields.List(
+                fields.Nested(
+                    {
+                        "date": fields.Date(required=True),
+                        "plan": fields.String(required=True),
+                    },
+                    allow_missing=True,
+                )
+            ),
+        }
+
         # Phrase post data
-        parser = reqparse.RequestParser(trim=True)
-        parser.add_argument(
-            "gov_id_type",
-            type=str,
-            choices=("บัตรประชาชน", "พาสปอร์ต"),
-            help="Government ID Type input field is invalid: {error_msg}",
-        )
-        parser.add_argument(
-            "gov_id", type=str, help="Government ID input field is invalid: {error_msg}"
-        )
-        parser.add_argument(
-            "name",
-            type=str,
-            help="Name input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "dob",
-            type=lambda d: ISODateType(d),
-            help="Date of Birth input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "first_encounter",
-            type=lambda d: ISODateType(d),
-            help="First Encounter Date input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "sex",
-            type=str,
-            choices=("ชาย", "หญิง"),
-            help="Sex input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "gender",
-            type=str,
-            choices=("Male", "Female", "MSM", "Bisexual", "Lesbian", "TG"),
-            help="Gender input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "marital",
-            type=str,
-            choices=("โสด", "สมรส", "หย่าร้าง", "ม่าย"),
-            help="Marital Status input field is invalid: {error_msg}",
-        )
-        parser.add_argument(
-            "nationality",
-            type=str,
-            help="Nationality input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "education",
-            type=str,
-            choices=(
-                "ต่ำกว่ามัธยมศึกษาตอนปลาย",
-                "มัธยมศึกษาตอนปลาย",
-                "ปวช/ปวส",
-                "ปริญญาตรี",
-                "ปริญญาโท",
-                "ปริญญาเอก",
-            ),
-            help="Education input field is invalid: {error_msg}",
-        )
-        parser.add_argument(
-            "address", type=str, help="address input field is invalid: {error_msg}"
-        )
-        parser.add_argument(
-            "tel",
-            action="append",
-            help="Telephone Number input field is invalid: {error_msg}",
-        )
-        parser.add_argument(
-            "relative_tel",
-            action="append",
-            help="Relative Telephone Number input field is invalid: {error_msg}",
-        )
-        parser.add_argument(
-            "is_refer",
-            type=str,
-            choices=(
-                "ผู้ป่วยใหม่",
-                "ผู้ป่วยรับโอน (ยังไม่เริ่มยา ARV)",
-                "ผู้ป่วยรับโอน (เริ่มยา ARV แล้ว)",
-            ),
-            help="Referral Status input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "refer_from",
-            type=str,
-            help="Refer From input field is invalid: {error_msg}",
-        )
-        parser.add_argument(
-            "hn", type=str, help="HN input field is invalid: {error_msg}", required=True
-        )
-        parser.add_argument(
-            "hiv_clinic_id",
-            type=str,
-            help="Clinic ID input field is invalid: {error_msg}",
-        )
-        parser.add_argument(
-            "nap", type=str, help="NAP ID input field is invalid: {error_msg}"
-        )
-        parser.add_argument(
-            "bill_payer",
-            type=str,
-            choices=(
-                "ประกันสุขภาพทั่วหน้า",
-                "ประกันสุขภาพทั่วหน้า นอกเขต",
-                "ประกันสังคม",
-                "ประกันสังคม ต่างรพ.",
-                "ข้าราชการ/จ่ายตรง",
-                "ต่างด้าว",
-                "ชำระเงิน",
-            ),
-            help="Bill Payer input field is invalid: {error_msg}",
-            required=True,
-        )
-        parser.add_argument(
-            "plan", action="append", help="Plan input field is invalid: {error_msg}"
-        )
+        data = parser.parse(json_args, request, locations=["json"])
 
         # Modify list datatype to JSON
-        data = parser.parse_args()
         data = Patient.convert_to_json(data)
 
         return data

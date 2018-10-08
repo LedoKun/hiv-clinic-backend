@@ -3,3 +3,14 @@ FLASK_APP=app.py
 FLASK_DEBUG=true
 FLASK_TEST=true
 FLASK_ENV=development
+
+LOGGER_HANDLER_POLICY=debug
+LOGGER_NAME=femmapi
+
+SECRET_KEY=changemeplease
+
+DATABASE_URL=postgresql://user:password@host
+SQLALCHEMY_TRACK_MODIFICATIONS=false
+
+MAX_SEARCH_RESULT=50
+MAX_PAGINATION=5

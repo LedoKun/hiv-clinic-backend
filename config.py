@@ -9,20 +9,21 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 
 class Config(object):
-    SECRET_KEY = (
-        os.environ.get("SECRET_KEY")
-        or "hefiw4peechai4aoph5gazeevei6quahsh7pis7Zeitoo5sae7aedeetha6raiW3eZoth0quie2PeXohkie1Ozeiraisaal7eyah"
-    )
+    SECRET_KEY = os.environ.get("SECRET_KEY")
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL"
-    ) or "sqlite:///" + os.path.join(basedir, "backend.db")
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-
+    # Logger
     # 'always' (default), 'never',  'production', 'debug'
-    LOGGER_HANDLER_POLICY = "debug"
-    LOGGER_NAME = "femmapi"
+    LOGGER_HANDLER_POLICY = os.environ.get("LOGGER_HANDLER_POLICY")
+    LOGGER_NAME = os.environ.get("LOGGER_NAME")
+
+    # Database config
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
+    SQLALCHEMY_TRACK_MODIFICATIONS = os.environ.get("SQLALCHEMY_TRACK_MODIFICATIONS")
 
     # Form Valification
     BUNDLE_ERRORS = True
     DATE_FORMAT = "%Y-%m-%d"
+
+    # Data Pagination
+    MAX_PAGINATION = int(os.environ.get("MAX_PAGINATION"))
+    MAX_SEARCH_RESULT = int(os.environ.get("MAX_SEARCH_RESULT"))
