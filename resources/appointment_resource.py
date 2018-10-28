@@ -4,11 +4,12 @@ from flask import jsonify, abort, request
 from backend.app import app, db, logger
 from sqlalchemy import exc
 from webargs import fields
-from marshmallow import validate, ValidationError
 from webargs.flaskparser import parser
+from flask_jwt_extended import jwt_required
 
 
 class AppointmentResource(Resource):
+    @jwt_required
     def get(self):
         # Get query info
         query_date = self.search_args()
@@ -19,10 +20,15 @@ class AppointmentResource(Resource):
                 .join(Patient, Patient.id == Appointment.paitent_id)
                 .filter(Appointment.date == query_date["date"])
                 .with_entities(Patient, Appointment)
-                .paginate(page=query_date["page"], per_page=app.config["MAX_PAGINATION"])
+                .paginate(
+                    page=query_date["page"],
+                    per_page=app.config["MAX_PAGINATION"],
+                )
             )
 
-            logger.debug("Getting appointments on {}".format(query_date["date"]))
+            logger.debug(
+                "Getting appointments on {}".format(query_date["date"])
+            )
 
             return jsonify(
                 {
@@ -34,14 +40,16 @@ class AppointmentResource(Resource):
                 }
             )
 
-
         except (IndexError, exc.SQLAlchemyError) as e:
             logger.error("Unable to write to DB")
             logger.error(e)
             abort(500)
 
     def search_args(self):
-        args = {"date": fields.Date(required=True), "page": fields.Int(missing=1)}
+        args = {
+            "date": fields.Date(required=True),
+            "page": fields.Int(missing=1),
+        }
 
         # Phrase args data
         data = parser.parse(args, request)

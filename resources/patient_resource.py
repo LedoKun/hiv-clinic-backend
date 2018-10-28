@@ -3,13 +3,14 @@ from backend.models import Patient
 from flask import jsonify, abort, request
 from backend.app import db, logger
 from sqlalchemy import func, exc
-import json
 from webargs import fields
-from marshmallow import validate, ValidationError
+from marshmallow import validate
 from webargs.flaskparser import parser
+from flask_jwt_extended import jwt_required
 
 
 class PatientResource(Resource):
+    @jwt_required
     def get(self, hn=None):
         """
         Return GET request for patient HN
@@ -18,7 +19,9 @@ class PatientResource(Resource):
         if not hn:
             no_of_patients = db.session.query(func.count(Patient.id)).scalar()
             logger.debug(
-                "Returning total number of patients: {}.".format(no_of_patients)
+                "Returning total number of patients: {}.".format(
+                    no_of_patients
+                )
             )
             return jsonify({"result": no_of_patients})
 
@@ -35,6 +38,7 @@ class PatientResource(Resource):
             logger.info("Found HN {}.".format(hn))
             return jsonify(patient)
 
+    @jwt_required
     def post(self, hn=None):
         """
         Create new patient
@@ -44,7 +48,9 @@ class PatientResource(Resource):
         data = self.form_data()
 
         # Check if the patient exists in db
-        is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=data["hn"])
+        is_patient_exists = Patient.is_exists(
+            col=Patient.hn, str_filter=data["hn"]
+        )
 
         if is_patient_exists:
             logger.debug("HN {} existed in DB.".format(data["hn"]))
@@ -53,7 +59,7 @@ class PatientResource(Resource):
         # Check for uniqueness
         for col in Patient.__unique__:
             try:
-                if not col in data:
+                if col not in data:
                     continue
 
                 column = getattr(Patient, col)
@@ -79,6 +85,7 @@ class PatientResource(Resource):
             logger.error(e)
             abort(500)
 
+    @jwt_required
     def patch(self, hn=None):
         """
         Update patient information
@@ -100,7 +107,9 @@ class PatientResource(Resource):
             abort(409)
 
         # Check if the patient exists in the db
-        is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=data["hn"])
+        is_patient_exists = Patient.is_exists(
+            col=Patient.hn, str_filter=data["hn"]
+        )
 
         if not is_patient_exists:
             logger.error("HN {} not found in DB".format(data["hn"]))
@@ -119,7 +128,10 @@ class PatientResource(Resource):
 
                 if is_exists:
                     logger.debug(
-                        "str_filter: {} existed in column: {}.".format(data[col]), col
+                        "str_filter: {} existed in column: {}.".format(
+                            data[col]
+                        ),
+                        col,
                     )
                     abort(409)
 
@@ -141,6 +153,7 @@ class PatientResource(Resource):
             logger.error(e)
             abort(500)
 
+    @jwt_required
     def delete(self, hn=None):
         """
         Delete patient record
@@ -158,10 +171,9 @@ class PatientResource(Resource):
         try:
             # Check if the patient exists in the db
             patient = Patient.query.filter_by(hn=hn)
-            # is_patient_exists = Patient.is_exists(col=Patient.hn, str_filter=hn)
 
             if patient is None:
-                logger.error("HN {} not found in DB".format(data["hn"]))
+                logger.error("HN {} not found in DB".format(hn))
                 abort(404)
 
             # patient.children.remove(visits, labs, imaging, appointments)

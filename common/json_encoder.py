@@ -22,10 +22,12 @@ class CustomJSONEncoder(JSONEncoder):
             return o.serialize()
 
         elif isinstance(o, pd.DataFrame):
-            return json.loads(o.to_json(orient="split", default_handler=str))
+            return [o.columns.tolist()] + o.values.tolist()
 
         elif isinstance(o, pd.Series):
-            return json.loads(o.to_json(default_handler=str))
+            return json.loads(
+                o.to_json(default_handler=str, date_format="iso")
+            )
 
         elif isinstance(o, (pd.Period, pd.Interval)):
             return str(o)

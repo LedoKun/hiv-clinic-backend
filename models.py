@@ -4,27 +4,26 @@ Database model, using Flask-SQLAlchemy
 
 from backend.app import db, logger
 from datetime import datetime
-from sqlalchemy import exists, desc
-from sqlalchemy import DateTime as SdateTime
-from sqlalchemy.types import TypeDecorator
+from sqlalchemy import exists
+# from sqlalchemy import DateTime as SdateTime
+# from sqlalchemy.types import TypeDecorator
 from sqlalchemy.inspection import inspect
 from sqlalchemy_utils.types import TSVectorType
 from sqlalchemy_searchable import make_searchable, SearchQueryMixin
 from flask_sqlalchemy import BaseQuery
 import json
-import pytz
 
 make_searchable(db.metadata)
 
 
-class DateTime(TypeDecorator):
-    impl = SdateTime
+# class DateTime(TypeDecorator):
+#     impl = SdateTime
 
-    def process_bind_param(self, value, engine):
-        return value
+#     def process_bind_param(self, value, engine):
+#         return value
 
-    def process_result_value(self, value, engine):
-        return value.replace(tzinfo=timezone("UTC"))
+#     def process_result_value(self, value, engine):
+#         return value.replace(tzinfo=timezone("UTC"))
 
 
 class Serializer(object):
@@ -61,7 +60,9 @@ class BaseModel(db.Model, Serializer):
 
     query_class = SearchableMixin
 
-    id = db.Column(db.Integer, primary_key=True, unique=True, autoincrement=True)
+    id = db.Column(
+        db.Integer, primary_key=True, unique=True, autoincrement=True
+    )
 
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     modify_timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -78,10 +79,10 @@ class BaseModel(db.Model, Serializer):
             if key in self.__skip__:
                 continue
 
-            elif (key in updated_keys) and (not key in self.__protected__):
+            elif (key in updated_keys) and (key not in self.__protected__):
                 setattr(self, key, kwargs[key])
 
-            elif not key in self.__protected__:
+            elif key not in self.__protected__:
                 setattr(self, key, None)
 
         self.modify_timestamp = datetime.utcnow()
@@ -96,7 +97,9 @@ class BaseModel(db.Model, Serializer):
             return None
 
         # Check if the data exists in the db
-        is_exists = db.session.query(exists().where(col == str_filter)).scalar()
+        is_exists = db.session.query(
+            exists().where(col == str_filter)
+        ).scalar()
 
         return is_exists
 
@@ -243,8 +246,15 @@ class Visit(BaseModel):
     """
 
     __tablename__ = "visit"
-    __protected__ = ["id", "paitent_id", "timestamp", "modify_timestamp"]
-    __json__ = ["abn_pe", "imp", "arv", "oi_prophylaxis", "anti_tb", "vaccination"]
+    __protected__ = ["id", "patient_id", "timestamp", "modify_timestamp"]
+    __json__ = [
+        "abn_pe",
+        "imp",
+        "arv",
+        "oi_prophylaxis",
+        "anti_tb",
+        "vaccination",
+    ]
 
     date = db.Column(db.Date, nullable=False)
     is_art_adherence = db.Column(db.Unicode())
@@ -270,7 +280,7 @@ class Lab(BaseModel):
     """
 
     __tablename__ = "lab"
-    __protected__ = ["id", "paitent_id", "timestamp", "modify_timestamp"]
+    __protected__ = ["id", "patient_id", "timestamp", "modify_timestamp"]
 
     date = db.Column(db.Date, nullable=False)
     anti_hiv = db.Column(db.Unicode(3))
@@ -299,7 +309,7 @@ class Imaging(BaseModel):
     """
 
     __tablename__ = "imaging"
-    __protected__ = ["id", "paitent_id", "timestamp", "modify_timestamp"]
+    __protected__ = ["id", "patient_id", "timestamp", "modify_timestamp"]
 
     date = db.Column(db.Date, nullable=False)
     film_type = db.Column(db.Unicode())
@@ -314,7 +324,7 @@ class Appointment(BaseModel):
     """
 
     __tablename__ = "appointment"
-    __protected__ = ["id", "paitent_id", "timestamp", "modify_timestamp"]
+    __protected__ = ["id", "patient_id", "timestamp", "modify_timestamp"]
 
     date = db.Column(db.Date, nullable=False)
     appointment_for = db.Column(db.Unicode(), nullable=False)
@@ -330,7 +340,6 @@ class ICD10(BaseModel):
     __tablename__ = "icd10"
     __protected__ = ["id"]
 
-    id = db.Column(db.Integer, primary_key=True, unique=True, autoincrement=True)
     icd10 = db.Column(db.Unicode(), nullable=False)
     description = db.Column(db.Unicode(), nullable=False)
 
@@ -338,6 +347,36 @@ class ICD10(BaseModel):
     search_vector = db.Column(
         TSVectorType("icd10", "description", regconfig="pg_catalog.english")
     )
+
+
+class User(BaseModel):
+    """
+    Store website users
+    """
+
+    __tablename__ = "user"
+    __protected__ = ["password"]
+
+    username = db.Column(db.Unicode(), nullable=False, unique=True)
+    password = db.Column(db.Unicode(), nullable=False)
+
+
+class RevokedToken(db.Model):
+    __tablename__ = "revoked_token"
+
+    id = db.Column(
+        db.Integer(), primary_key=True, unique=True, autoincrement=True
+    )
+    jti = db.Column(db.Unicode())
+
+    @classmethod
+    def is_jti_blacklisted(cls, jti):
+        query = cls.query.filter_by(jti=jti).first()
+        return bool(query)
+
+    def add(self):
+        db.session.add(self)
+        db.session.commit()
 
 
 db.configure_mappers()

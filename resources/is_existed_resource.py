@@ -1,14 +1,15 @@
 from flask_restful import Resource
 from backend.models import Patient
 from flask import jsonify, abort, request
-from backend.app import db, logger
-from sqlalchemy import func
+from backend.app import logger
 from webargs import fields
-from marshmallow import validate, ValidationError
+from marshmallow import validate
 from webargs.flaskparser import parser
+from flask_jwt_extended import jwt_required
 
 
 class IsExistedResource(Resource):
+    @jwt_required
     def get(self):
         # Get query info
         search_args = self.search_args()
@@ -28,9 +29,10 @@ class IsExistedResource(Resource):
             abort(409)
 
         logger.debug(
-            "Check for uniqueness using Patient model, column: {}, filter: {}, hn: {}.".format(
-                search_args["field"], search_args["query"], str(hn)
-            )
+            (
+                "Check for uniqueness using Patient model, column: "
+                "{}, filter: {}, hn: {}."
+            ).format(search_args["field"], search_args["query"], str(hn))
         )
 
         return jsonify({"result": bool(hn)})

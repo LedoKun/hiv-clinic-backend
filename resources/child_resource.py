@@ -1,19 +1,20 @@
 from flask_restful import Resource
 from flask import jsonify, abort, request
 from backend.app import db, logger, app
-from sqlalchemy import exists, exc
+from sqlalchemy import exc
 from backend.models import Patient, Visit, Lab, Imaging, Appointment
-import json
 from webargs import fields
-from marshmallow import validate, ValidationError
+from marshmallow import validate
 from webargs.flaskparser import parser
+from flask_jwt_extended import jwt_required
 
 
 class ChildResource(Resource):
+    @jwt_required
     def get(self, hn=None, child_type=None, record_id=None):
 
         # Change HN format
-        if not hn or not child_type in Patient.__children__:
+        if not hn or child_type not in Patient.__children__:
             logger.error(
                 "Either resource type or patient HN is not supplied.".format(
                     hn, child_type
@@ -29,7 +30,9 @@ class ChildResource(Resource):
             patient = Patient.query.filter_by(hn=hn).first()
 
             if not patient:
-                logger.error("Child: {}, HN: {}, not found.".format(hn, child_type))
+                logger.error(
+                    "Child: {}, HN: {}, not found.".format(hn, child_type)
+                )
                 abort(404)
 
             # Return all children
@@ -61,7 +64,11 @@ class ChildResource(Resource):
                     )
                 )
 
-                child = getattr(patient, child_type).filter_by(id=record_id).first()
+                child = (
+                    getattr(patient, child_type)
+                    .filter_by(id=record_id)
+                    .first()
+                )
 
                 if child:
                     return jsonify(child)
@@ -71,7 +78,7 @@ class ChildResource(Resource):
 
             # How can you reach this point?
             else:
-                logging.error("Unknown error.")
+                logger.error("Unknown error.")
                 abort(500)
 
         except (IndexError, exc.SQLAlchemyError) as e:
@@ -79,11 +86,14 @@ class ChildResource(Resource):
             logger.error(e)
             abort(500)
 
+    @jwt_required
     def put(self, hn=None, child_type=None, record_id=None):
 
-        if not hn or not child_type in Patient.__children__:
+        if not hn or child_type not in Patient.__children__:
             logger.error(
-                "No valid HN {} or child type {} supplied.".format(hn, child_type)
+                "No valid HN {} or child type {} supplied.".format(
+                    hn, child_type
+                )
             )
             abort(404)
 
@@ -180,9 +190,10 @@ class ChildResource(Resource):
 
                 # Add a new record
                 logger.debug(
-                    "Adding record for {} on {} for patient HN {} in the DB.".format(
-                        child_type, data["date"], hn
-                    )
+                    (
+                        "Adding record for {} on {} "
+                        "for patient HN {} in the DB."
+                    ).format(child_type, data["date"], hn)
                 )
 
                 child_column.append(new_record)
@@ -196,6 +207,7 @@ class ChildResource(Resource):
             logger.error(e)
             abort(500)
 
+    @jwt_required
     def delete(self, hn=None, child_type=None, record_id=None):
         """
         Delete visit record
@@ -203,9 +215,12 @@ class ChildResource(Resource):
 
         logger.debug("Recieved Delete request.")
 
-        if not hn or not record_id or not child_type in Patient.__children__:
+        if not hn or not record_id or child_type not in Patient.__children__:
             logger.error(
-                "No HN or Record Date or Child Type was passed along, unable to Delete the record."
+                (
+                    "No HN or Record Date or Child "
+                    "Type was passed along, unable to Delete the record."
+                )
             )
             abort(400)
 
@@ -217,7 +232,9 @@ class ChildResource(Resource):
             patient = Patient.query.filter_by(hn=hn).first()
 
             if patient is None:
-                logger.error("No patient with the specified HN existed in the DB.")
+                logger.error(
+                    "No patient with the specified HN existed in the DB."
+                )
                 abort(404)
 
             # Check if the record exists in the db
@@ -225,7 +242,9 @@ class ChildResource(Resource):
             record = child_column.filter_by(id=record_id).first()
 
             if record is None:
-                logger.debug("Record on {} does not exist in the DB.".format(record_id))
+                logger.debug(
+                    "Record on {} does not exist in the DB.".format(record_id)
+                )
                 abort(400)
 
             db.session.delete(record)
@@ -246,14 +265,18 @@ class ChildResource(Resource):
         # JSON Schema
         json_args = {
             "date": fields.Date(required=True),
-            "is_art_adherence": fields.String(validate=validate.OneOf(["Yes", "No"])),
+            "is_art_adherence": fields.String(
+                validate=validate.OneOf(["Yes", "No"])
+            ),
             "art_delay": fields.Float(),
             "art_adherence_scale": fields.Float(),
             "art_adherence_problem": fields.String(),
             "hx_contact_tb": fields.String(),
             "bw": fields.Float(),
             "abn_pe": fields.List(fields.String(allow_missing=True)),
-            "imp": fields.List(fields.String(), validate=validate.Length(min=1)),
+            "imp": fields.List(
+                fields.String(), validate=validate.Length(min=1)
+            ),
             "arv": fields.List(fields.String(allow_missing=True)),
             "why_switched_arv": fields.String(),
             "oi_prophylaxis": fields.List(fields.String(allow_missing=True)),
@@ -277,14 +300,20 @@ class ChildResource(Resource):
         # JSON Schema
         json_args = {
             "date": fields.Date(required=True),
-            "anti_hiv": fields.String(validate=validate.OneOf(["+", "-", "+/-"])),
+            "anti_hiv": fields.String(
+                validate=validate.OneOf(["+", "-", "+/-"])
+            ),
             "cd4": fields.Integer(),
             "p_cd4": fields.Float(),
             "vl": fields.Integer(),
             "hiv_resistence": fields.String(),
             "hbsag": fields.String(validate=validate.OneOf(["+", "-", "+/-"])),
-            "anti_hbs": fields.String(validate=validate.OneOf(["+", "-", "+/-"])),
-            "anti_hcv": fields.String(validate=validate.OneOf(["+", "-", "+/-"])),
+            "anti_hbs": fields.String(
+                validate=validate.OneOf(["+", "-", "+/-"])
+            ),
+            "anti_hcv": fields.String(
+                validate=validate.OneOf(["+", "-", "+/-"])
+            ),
             "afb": fields.String(
                 validate=validate.OneOf(["3+", "2+", "1+", "Scantly", "-"])
             ),

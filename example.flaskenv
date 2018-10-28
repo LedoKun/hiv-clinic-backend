@@ -7,9 +7,13 @@ FLASK_ENV=development
 LOGGER_HANDLER_POLICY=debug
 LOGGER_NAME=femmapi
 
-SECRET_KEY=changemeplease
+SECRET_KEY=KEY
+JWT_SECRET_KEY=KEY2
 
-DATABASE_URL=postgresql://user:password@host
+JWT_BLACKLIST_ENABLED=true
+JWT_BLACKLIST_TOKEN_CHECKS=true
+
+DATABASE_URL=postgresql+psycopg2://postgres:dev-server@172.18.0.2
 SQLALCHEMY_TRACK_MODIFICATIONS=false
 
 MAX_SEARCH_RESULT=50
