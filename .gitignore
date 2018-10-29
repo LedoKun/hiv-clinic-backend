@@ -104,6 +104,4 @@ venv.bak/
 .mypy_cache/
 
 # project-spicific
-migrations/
-backend.db
 .flaskenv
