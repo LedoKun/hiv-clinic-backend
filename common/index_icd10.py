@@ -68,8 +68,9 @@ def activate_job():
             db.session.add(user)
             db.session.commit()
 
-        insert_icd10_into_db()
-        logger.info("Done indexing ICD10 codes...")
+            # insert icd10 data
+            insert_icd10_into_db()
+            logger.info("Done indexing ICD10 codes...")
 
     thread = threading.Thread(target=run_job)
     thread.start()
