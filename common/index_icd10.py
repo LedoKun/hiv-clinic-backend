@@ -12,7 +12,7 @@ def activate_job():
     # https://networklore.com/start-task-with-flask/
 
     def read_icd10_file():
-        icd10_file_path = "icd10cm_codes_2019.txt"
+        icd10_file_path = "./backend/icd10cm_codes_2019.txt"
 
         with open(icd10_file_path) as file:
             for line in file:
